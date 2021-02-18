@@ -1,0 +1,901 @@
+---
+title: "Quantum Statistics and Networks"
+author: "Mori"
+date: "2021/2/14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(igraph)
+```
+
+## About
+
+- We explain the numerical procedures and the mothods of data analysis of the network model proposed in .
+
+
+
+
+## Model
+
+- We explain the  algorithm for generating random networks.
+
+- We start from a complete network with $r+1$ nodes. We label the nodes by $t=1,2,\cdots,r+1$.
+
+- We denote the numbers of in-degrees and the out-degrees of node $i$ as $k_{i}^{IN}$ and $k_{i}^{OUT}$, respectively. The degree of node $i$ is $k_{i}=k_{i}^{IN}+k_{i}^{OUT}$.
+
+- Node $1$ has no in-degree $k_{1}^{IN}=0$ and $r$ out-degrees $k_{1}^{OUT}=r$.
+
+- Nodel $2$ has 1 in-degree  $k_{2}^{IN}=1$ and $r-1$ out-degrees $k_{2}^{OUT}=r-1$.
+
+- In general, node $t=1,\cdots,r+1$ has $t-1$ in-degrees and $t-(r+1)$ out-degrees.
+
+- The evolution of the network starts from node $t=r+2$.  We add new nodes to the network and connect them with the existing nodes $1,\cdots,t-1$.
+
+- We genaralize the preferential attachment process of the BA model by discrminating the in-degrees and the out-degrees. In the BA model, 
+the attachment probability of node $i$ is proportional to its degree $k_i$. In order to take into account the difference between in-degree and out-degree,
+we introduce "popularity". The "popularity" $l_i $of node $i$ is defined as
+
+$$
+l_{i}=k_{i}^{IN}+\omega k_{i}^{OUT}
+$$
+
+
+- In the definition, the importnance of the in-degree and out-degree are different and we denote the relative importance of the 
+out-degree to the in-degree link by a parameter $\omega$. When $\omega$ is positive (negative), the popularity increases (decreases) as the nodes is 
+selected by newly added nodes.
+
+- When node $t$ attaches to the network, it chooses at most $r$ different nodes from the previous $t-1$ nodes.
+
+- The probability that node $i$ is selected by node $t$ is given as
+
+$$
+P(\mbox{Node}\,\, i \,\, \mbox{is selected})=p_{i}(t)=\frac{\mbox{Max}(l_i,0)}{\sum_{s=1}^{t-1}\mbox{Max}(l_s,0)}
+$$
+
+-  Node $t$ chooses $r$ different nodes with the probability $p_{i}(t)$. $k_{t}^{IN}=r$ and the chosen nodes' out-degrees increase by one.  
+If the number $r'$  of the nodes with positive $p_{i}$ is less than or equal $r$, node $t$ chooses all the $r'$ nodes, $k_{t}^{IN}=r'$ and chosen $r'$ nodes
+out-degrees increase by one. When $\omega>0$, such a case does not  occur and $k_{i}^{IN}=r$.
+
+- Wnen $\omega<0$, as $p_{i}(t)=0$ for $k_{i}^{OUT}>k_{i}^{IN}/|\omega|$
+the maximum number of $k_{i}^{OUT}$ is $\lceil k_{i}^{IN}/|\omega|\rceil$. Here, $\lceil x \rceil$ is the ceiling function of $x$.
+In particular, for $\omega=-1$, $k_{i}^{OUT}$ cannnot exceed $k_{i}^{IN}$. We can expect the resemblance with the Fermi statistics of 
+quantum statistical mechanics, where one energy level can be occupied  by one particle by the Pauli's exculision principle. 
+When $\omega=-1$, a node  can be linked by  one node per one in-degree. 
+
+
+- R-function to generate the network.
+
+
+```{r}
+Network<-function(N,r,omega){
+k_IN<-rep(0,N);k_OUT<-rep(0,N);Link<-matrix(0,ncol=r,nrow=N)
+# Initial Complete Network
+for(t in 1:r+1) k_IN[t]<-(t-1)
+for(t in 1:r) k_OUT[t]<-r+1-t
+for(t in 2:(r+1)){
+  for(s in 1:(t-1)){
+    Link[t,s]<-s
+  }
+}
+t_n=(r+1)
+net<-list(N=N,r=r,omega=omega,t=t_n,k_IN=k_IN,k_OUT=k_OUT,Link=Link)
+# Evolution of Network
+if(t<N){
+for(t in (t_n+1):N){ 
+net$t<-t
+t_p<-t-1
+Z=0;l<-numeric(t_p);prob<-numeric(t_p)
+l[1:t_p]<-ifelse(net$k_IN[1:t_p]+omega*net$k_OUT[1:t_p]>0,net$k_IN[1:t_p]+omega*net$k_OUT[1:t_p],0)
+prob<-l/sum(l)
+rd<-sum(prob>0)
+if(rd>=r) rd<-r
+out<-sample(1:t_p,rd,prob=prob)
+net$k_IN[t]<-rd
+net$Link[t,1:rd]<-out[1:rd]
+net$k_OUT[out[1:rd]]<-net$k_OUT[out[1:rd]]+1
+}
+}
+return(net)
+}
+```
+    
+
+
+```{r}
+N<-30
+r<-3
+omega<-1
+net<-Network(N,r,omega)
+net
+```
+
+
+
+## Visualization
+
+
+
+
+- $N=100,r=3,\omega=\{-1,0,1,100\}3$
+
+```{r echo=FALSE,fig.width=10,fig.height=8}
+
+omegas<-c(-1,0,1,100)
+O<-length(omegas)
+N<-100
+r<-3
+t1 <- expression(paste(omega,"=-1"))
+t2 <- expression(paste(omega,"=0"))
+t3 <- expression(paste(omega,"=1"))
+t4 <- expression(paste(omega,"=100"))
+ts<-c(t1,t2,t3,t4)
+
+
+par(mfrow=c(2,2))
+set.seed(1)
+for(j in 1:O){
+omega<-omegas[j]
+net<-Network(N,r,omega)
+Ad<-matrix(0,ncol=N,nrow=N)
+colnames(Ad)<-1:N
+rownames(Ad)<-1:N
+for(i in 1:N){
+for(s in 1:r){  
+if(net$Link[i,s]>0) Ad[i,net$Link[i,s]]<-1
+}}
+k<-net$k_OUT+net$k_IN
+margin_b<-c(-0.3,-0.3,-0.3,-0.3)
+if(omega==1) margin_b<-c(-0.2,-0.2,-0.2,-0.2)
+
+Ad_DATA <- graph_from_adjacency_matrix(Ad)
+l<-layout_with_kk(Ad_DATA)
+#l <-layout_with_lgl(Ad_DATA)
+#l <-layout_with_fr(Ad_DATA)
+#l <-layout_nicely(Ad_DATA)
+
+plot(Ad_DATA,directed=TRUE,vertex.color="black",vertex.size=0.3*k,vertex.frame.color="gray",
+     vertex.label.color="black",vertex.label.cex=0.01,vertex.label.dist=2,edge.curved=0.2,edge.arrow.size=0.1,vertex.label=NA,edge.width=0.1, 
+     layout=l,main=ts[omega],margin=margin_b)
+}
+```
+
+
+
+
+
+- $N=100,r=1,\omega=\{-1,0,1,100\}3$
+
+
+
+
+```{r echo=FALSE,fig.width=10,fig.height=8}
+omegas<-c(-1,0,1,100)
+O<-length(omegas)
+N<-100
+r<-1
+t1 <- expression(paste(omega,"=-1"))
+t2 <- expression(paste(omega,"=0"))
+t3 <- expression(paste(omega,"=1"))
+t4 <- expression(paste(omega,"=100"))
+ts<-c(t1,t2,t3,t4)
+
+par(mfrow=c(2,2))
+set.seed(5)
+for(j in 1:O){
+omega<-omegas[j]
+net<-Network(N,r,omega)
+Ad<-matrix(0,ncol=N,nrow=N)
+colnames(Ad)<-1:N
+rownames(Ad)<-1:N
+for(i in 1:N){
+for(s in 1:r){  
+if(net$Link[i,s]>0) Ad[i,net$Link[i,s]]<-1
+}}
+k<-net$k_OUT+net$k_IN
+margin_b<-c(-0.3,-0.3,-0.3,-0.3)
+if(omega==1) margin_b<-c(-0.2,-0.2,-0.2,-0.2)
+
+Ad_DATA <- graph_from_adjacency_matrix(Ad)
+l<-layout_with_kk(Ad_DATA)
+#l<- layout_with_lgl(Ad_DATA)
+#l<-layout_with_lgl(Ad_DATA)
+plot(Ad_DATA,directed=TRUE,vertex.color="black",vertex.size=0.3*k,vertex.frame.color="gray",
+     vertex.label.color="black",vertex.label.cex=0.01,vertex.label.dist=2,edge.curved=0.2,edge.arrow.size=0.1,vertex.label=NA,edge.width=0.1
+     , layout=l,main=ts[omega],margin=margin_b)
+}
+```
+
+
+
+
+### Probability that the node $i$ is selected,
+
+- $\omega>0$
+
+$$
+\frac{l_i}{(1+\omega)t}=\frac{r}{1+\omega}\left(\frac{1}{t_i}\right)^{\omega/(1+\omega)}t^{-1/(1+\omega)}
+$$
+
+
+
+- $\omega=0$
+
+$$
+\frac{l_i}{t}=\frac{rt_i}{t}
+$$
+
+- $-1<\omega<0$
+
+
+$$
+\frac{l_i}{(1+\omega)t}=\frac{r}{1+\omega}\left(\frac{1}{t_i}\right)^{-\omega/(1+\omega)}t^{-1/(1+\omega)}
+$$
+
+
+- $\omega=-1$
+
+$$
+\frac{l_i}{C}\sim \frac{r}{C}e^{-(t-t_i)/C}
+$$
+
+
+
+- $t_i=1,r=3,C<-1$
+
+
+```{r echo=FALSE}
+r<-3
+b<-1
+f1<-function(t) (r/(1+b))*t**(-1/(1+b)) 
+f0<-function(t) (r/t)
+b2<--0.5
+fm09<-function(t) r/(1+b2)*t**(-1/(1+b2))
+C<-1
+fm1<-function(t) exp(-(t-1)/C)
+
+  
+t4<-expression(paste(omega,"=-1.0"))
+t1<-expression(paste(omega,"=-0.5"))
+t2<-expression(paste(omega,"=0.0"))
+t3<-expression(paste(omega,"=1.0"))
+
+par(mar = c(5.5, 6.0, 4.1, 2))
+curve(f1(x),xlim=c(2,1000),ylim=c(0.000001,2),log="xy",lwd=2,xlab="t",ylab="",cex.lab=2,cex.main=2,cex.axis=2,type="l")
+curve(f0(x),add=TRUE,lwd=2,lty=2)
+curve(fm09(x),add=TRUE,lwd=2,lty=3)
+curve(fm1(x),add=TRUE,lwd=2,lty=4)
+legend("bottomleft",legend=c(t3,t2,t1,t4),lty=c(1,2,3,4),lwd=2)
+
+#pdf("t_vs_memory.pdf")
+#par(mar = c(5.5, 6.0, 4.1, 2))
+#curve(f1(x),xlim=c(2,1000),ylim=c(0.000001,2),log="xy",lwd=2,xlab="t",ylab="",cex.lab=2,cex.main=2,cex.axis=2,type="l")
+#curve(f0(x),add=TRUE,lwd=2,lty=2)
+#curve(fm09(x),add=TRUE,lwd=2,lty=3)
+#curve(fm1(x),add=TRUE,lwd=2,lty=4)
+#legend("bottomleft",legend=c(t3,t2,t1,t4),lty=c(1,2,3,4),lwd=2,cex=1.2)
+#dev.off()
+```
+
+
+
+### Degree distribution
+
+- A.$\omega>0$: Scale Free Network
+
+
+$$
+p_k \propto k^{-\frac{1+2\omega}{\omega}}. 
+$$
+
+
+$$
+\gamma(\omega)=\frac{1+2\omega}{\omega}
+$$
+
+
+- Power-law expeonent $\gamma$
+
+
+$$
+p_k \propto k^{-\gamma}=k^{-\frac{1+2\omega}{\omega}}\,\, \mbox{for}\,\, k\ge k_{min}
+$$
+
+- Estimator of $\gamma$
+
+$$
+\hat{\gamma}=1+n \left[\sum_{i=1}^{n}\ln \frac{k_i}{k_{min}}\right]^{-1}
+$$
+- standard error of $\hat{\gamma}$
+
+$$
+\mbox{SE}(\hat{\gamma})=\frac{\hat{\gamma}-1}{\sqrt{n}}
+$$
+
+```{r}
+omega2gamma<-function(omega)  (1+2*omega)/omega
+k_i2gamma<-function(k_i,k_min){
+  n<-sum(k_i>=k_min)
+  ans<-1+n/sum(ifelse(k_i>=k_min,log(k_i/k_min),0))
+  se<-(ans-1)/sqrt(n)
+  return(c(ans,se)) 
+} 
+```
+
+
+
+    
+
+
+
+- B.$\omega=0$: Random Network
+
+
+$$
+p_k\propto e^{-k/r}   
+$$
+
+
+
+- C.$-1<\omega <0$:
+
+
+$$
+p_{k}\propto \left(\frac{1+|\omega|}{|\omega|}r-k\right)^{\frac{1}{|\omega|}-2}
+$$
+
+
+
+
+- D.$\omega\to -1$:Extended lattice
+
+
+$$
+k_{i}(t)=r(2-e^{-(t-t_i)/C})   \stackrel{t\to \infty}{\to} 2r
+$$
+$$
+p_{k}=\delta_{2r,k}
+$$
+
+
+- Numerical Study
+
+
+```{r echo=FALSE,eval=FALSE}
+omegas<-c(-1,0,0.1,0.5,1,2,3,4,5,6,7,8,9,10,100)
+gammas_emp<-c()
+gammas_emp_se<-c()
+hist_deg<-list()
+N<-10000
+r<-3
+S<-100
+k_min<-20
+
+for(i in 1:length(omegas)){
+  omega<-omegas[i]
+  k_i<-c()
+for(j in 1:S){
+  print(c(omega,j))
+net<-Network(N,r,omega)
+k_i<-c(k_i,net$k_IN+net$k_OUT)
+}
+k_max=max(k_i)
+hist_deg[[i]]<-hist(k_i,breaks=seq(0.5,k_max+0.5,by=1),xlim=c(0,30),xlab="k")  
+gammas_emp[i]<-k_i2gamma(k_i,k_min)[1]
+gammas_emp_se[i]<-k_i2gamma(k_i,k_min)[2]
+}
+save(omegas,gammas_emp,gammas_emp_se,hist_deg,file="omega_vs_gamma_hist.RData")
+```
+
+
+
+
+
+```{r}
+load("omega_vs_gamma_hist.RData")
+is<-3:14
+par(mar = c(5.5, 6.0, 4.1, 2))
+plot(omegas[is],gammas_emp[is],col=1,ylim=c(2,7),cex=1.5,cex.lab=2,cex.main=2,cex.axis=2,xlab=expression(omega),ylab=expression(gamma))
+arrows(omegas[is],gammas_emp[is]-gammas_emp_se[is],omegas[is],gammas_emp[is]+gammas_emp_se[is],col=8,ylim=c(2,5),code=3,angle=90)
+curve(omega2gamma,col=1,type="l",lty=1,lwd=2,add=TRUE)
+legend("topright",legend=c(expression(hat(gamma)),"Eq.(2)"),lty=c(-1,1),pch=c(1,-1),cex=1.5,col=1)
+
+
+#pdf("omega_vs_gamma.pdf")
+#par(mar = c(5.5, 6.0, 4.1, 2))
+#plot(omegas[is],gammas_emp[is],col=1,ylim=c(2,7),cex=1.5,cex.lab=2,cex.main=2,cex.axis=2,xlab=expression(omega),ylab=expression(gamma))
+#arrows(omegas[is],gammas_emp[is]-gammas_emp_se[is],omegas[is],gammas_emp[is]+gammas_emp_se[is],col=8,ylim=c(2,5),code=3,angle=90)
+#curve(omega2gamma,col=1,type="l",lty=1,lwd=2,add=TRUE)
+#legend("topright",legend=c(expression(hat(gamma)),"Eq.(2)"),lty=c(-1,1),pch=c(1,-1),cex=1.5,col=1)
+#dev.off()
+```
+
+- $\omega=0.5,1,3,10$
+
+
+
+
+```{r}
+t1<-expression(paste("Data:",omega,"=0.5"))
+t2<-expression(paste("Data:",omega,"=1.0"))
+t3<-expression(paste("Data:",omega,"=3.0"))
+t4<-expression(paste("Data:",omega,"=10.0"))
+t5<-expression(k^-(4-1))
+t6<-expression(k^-(3-1))
+t7<-expression(k^-(7/3-1))
+t8<-expression(k^-(2.1-1))
+ks<-seq(20,100,1)
+
+par(mar = c(5.5, 6.0, 4.1, 2))
+plot(hist_deg[[4]]$mids,1-cumsum(hist_deg[[4]]$density),log="xy",xlab="k",ylab=expression(paste(P,"[l">="k]")),main="",xlim=c(10,1000),ylim=c(0.0001,0.1),type="l",lty=2,col=1,lwd=2,cex.lab=2,cex.main=2,cex.axis=2)
+points(hist_deg[[5]]$mids,1-cumsum(hist_deg[[5]]$density),type="l",lty=2,col=8,lwd=2)
+points(hist_deg[[7]]$mids,1-cumsum(hist_deg[[7]]$density),type="l",lty=4,col=1,lwd=2)
+points(hist_deg[[14]]$mids,1-cumsum(hist_deg[[14]]$density),type="l",lty=4,col=8,lwd=2)
+points(ks,100*ks**(-3),type="l",lwd=4,col=1)
+points(ks,10*ks**(-2),type="l",lwd=4,col=8)
+points(ks,2*ks**(-(7/3-1)),type="l",lty=3,lwd=2,col=1)
+points(ks,1*ks**(-1.1),type="l",lty=3,lwd=2,col=8)
+legend("topright",legend=c(t1,t2,t3,t4,t5,t6,t7,t8),col=c(1,8),lwd=c(2,2,2,2,4,4,3,3),lty=c(2,2,4,4,1,1,3,3),cex=1.2)
+
+
+#pdf("omega_vs_dist_k.pdf")
+#par(mar = c(5.5, 6.0, 4.1, 2))
+#plot(hist_deg[[4]]$mids,1-cumsum(hist_deg[[4]]$density),log="xy",xlab="k",ylab=expression(paste(P,"[l">="k]")),main="",xlim=c(10,1000),ylim=c(0.0001,0.1),type="l",lty=2,col=1,lwd=2,cex.lab=2,cex.main=2,cex.axis=2)
+#points(hist_deg[[5]]$mids,1-cumsum(hist_deg[[5]]$density),type="l",lty=2,col=8,lwd=2)
+#points(hist_deg[[7]]$mids,1-cumsum(hist_deg[[7]]$density),type="l",lty=4,col=1,lwd=2)
+#points(hist_deg[[14]]$mids,1-cumsum(hist_deg[[14]]$density),type="l",lty=4,col=8,lwd=2)
+#points(ks,100*ks**(-3),type="l",lwd=4,col=1)
+#points(ks,10*ks**(-2),type="l",lwd=4,col=8)
+#points(ks,2*ks**(-(7/3-1)),type="l",lty=3,lwd=2,col=1)
+#points(ks,1*ks**(-1.1),type="l",lty=3,lwd=2,col=8)
+#legend("topright",legend=c(t1,t2,t3,t4,t5,t6,t7,t8),col=c(1,8),lwd=c(2,2,2,2,4,4,3,3),lty=c(2,2,4,4,1,1,3,3),cex=1.2)
+#dev.off()
+```
+
+- $\omega=0,-1$
+
+```{r}
+r<-3
+t1<-expression(paste("Data:",omega,"=0"))
+t2<-expression(paste("Data:",omega,"=-1.0"))
+t3<-expression(paste(0.8*exp(-k/r)))
+par(mar = c(5.5, 6.0, 4.1, 2))
+plot(hist_deg[[2]]$mids-0.06,hist_deg[[2]]$density,xlab="k",ylab=expression(p[k]),main="",xlim=c(3,15),ylim=c(0.0,0.7),type="h",lty=1,col=1,lwd=6,cex.lab=2,cex.main=2,cex.axis=2)
+curve(0.8*exp(-x/r),add=TRUE,lty=3,lwd=2)
+points(hist_deg[[1]]$mids+0.06,hist_deg[[1]]$density,type="h",lty=1,col=8,lwd=6)
+legend("topright",legend=c(t1,t2,t3),col=c(1,8,1),lwd=c(4,4,2),lty=c(1,1,3),cex=1.2)
+
+
+#pdf("omega_vs_dist_k_2.pdf")
+#par(mar = c(5.5, 6.0, 4.1, 2))
+#plot(hist_deg[[2]]$mids-0.06,hist_deg[[2]]$density,xlab="k",ylab=expression(p[k]),main="",xlim=c(3,15),ylim=c(0.0,0.7),type="h",lty=1,col=1,lwd=6,cex.lab=2,cex.main=2,cex.axis=2)
+#curve(0.8*exp(-x/r),add=TRUE,lty=3,lwd=2)
+#points(hist_deg[[1]]$mids+0.06,hist_deg[[1]]$density,type="h",lty=1,col=8,lwd=6)
+#legend("topright",legend=c(t1,t2,t3),col=c(1,8,1),lwd=c(4,4,2),lty=c(1,1,3),cex=1.2)
+#dev.off()
+```
+
+
+
+
+
+### Degree distributions for $\omega<0$
+
+
+```{r eval=FALSE,echo=FALSE}
+N<-10000
+r<-3
+S<-100
+
+net_033<-c()
+net_05<-c()
+net_066<-c()
+net_09<-c()
+net_0999<-c()
+
+for(s in 1:S){
+  
+net<-Network(N,r,-1/3)
+ks<-net$k_IN+net$k_OUT
+net_033<-c(net_033,ks)
+
+net<-Network(N,r,-0.5)
+ks<-net$k_IN+net$k_OUT
+net_05<-c(net_05,ks)
+
+net<-Network(N,r,-2/3)
+ks<-net$k_IN+net$k_OUT
+net_066<-c(net_066,ks)
+
+net<-Network(N,r,-0.9)
+ks<-net$k_IN+net$k_OUT
+net_09<-c(net_09,ks)
+
+net<-Network(N,r,-0.999)
+ks<-net$k_IN+net$k_OUT
+net_0999<-c(net_0999,ks)
+
+print(s)
+}
+
+save(net_033,net_05,net_066,net_09,net_0999,file="neg_omega_vs_deg_dist.RData")
+```
+
+
+
+```{r}
+load("neg_omega_vs_deg_dist.RData")
+N<-10000
+r<-3
+S<-100
+par(mfrow=c(2,2))
+par(mar = c(5.5, 6.0, 4.1, 2))
+t<-expression(paste(omega,"=-1/3"))
+barplot(table(net_033)/(N*S),xlab="k",main=t,cex.lab=2,cex.main=2,cex.axis=2)
+t<-expression(paste(omega,"=-1/2"))
+barplot(table(net_05)/(N*S),xlab="k",main=t,cex.lab=2,cex.main=2,cex.axis=2)
+t<-expression(paste(omega,"=-0.9"))
+barplot(table(net_09)/(N*S),xlab="k",main=t,cex.lab=2,cex.main=2,cex.axis=2)
+t<-expression(paste(omega,"=-0.999"))
+barplot(table(net_0999)/(N*S),xlab="k",main=t,cex.lab=2,cex.main=2,cex.axis=2)
+
+
+#pdf("neg_omega_vs_deg_dis.pdf")
+#par(mfrow=c(2,2))
+#par(mar = c(5.5, 6.0, 4.1, 2))
+#t<-expression(paste(omega,"=-1/3"))
+#barplot(table(net_033)/(N*S),xlab="k",main=t,cex.lab=2,cex.main=2,cex.axis=2)
+#t<-expression(paste(omega,"=-1/2"))
+#barplot(table(net_05)/(N*S),xlab="k",main=t,cex.lab=2,cex.main=2,cex.axis=2)
+#t<-expression(paste(omega,"=-0.9"))
+#barplot(table(net_09)/(N*S),xlab="k",main=t,cex.lab=2,cex.main=2,cex.axis=2)
+#t<-expression(paste(omega,"=-0.999"))
+#barplot(table(net_0999)/(N*S),xlab="k",main=t,cex.lab=2,cex.main=2,cex.axis=2)
+#dev.off()
+```
+
+
+
+
+
+
+## Cluster Coef. and Average Distance
+
+- WS model
+
+
+- $N=10^3,10^4,r=3$
+
+```{r echo=FALSE,eval=FALSE}
+sw_cluster_dis<-function(N,S,k,p){
+  dis<-c()
+  cc<-c()
+  dis2<-c()
+  cc2<-c()
+  for(i in 1:S){
+    g <- sample_smallworld(1, N, k, p)
+    dis[i]<-mean_distance(g)
+#    dis2[i]<-average.path.length(g)
+    cc[i]<-transitivity(g, type="average")
+#    cc2[i]<-mean(transitivity(g,type="localaverage",isolates="zero"))
+  } 
+  return(c(mean(cc),mean(dis)))
+}
+
+options(digits=10) 
+ps<-c(0,0.00000001*((10**0.1)**(0:79)),1.0)
+p2cc<-c()
+p2dis<-c()
+N<-1000
+S<-1000
+r<-3
+for(i in 1:length(ps)){
+print(ps[i])  
+out<-sw_cluster_dis(N,S,r,ps[i])
+p2cc[i]<-out[1]
+p2dis[i]<-out[2]
+}
+save(ps,p2cc,p2dis,file="WS_N1000.RData")
+
+#########################################################################
+p2cc2<-c()
+p2dis2<-c()
+N<-10000
+S<-100
+r<-3
+for(i in 1:length(ps)){
+print(ps[i])  
+out<-sw_cluster_dis(N,S,r,ps[i])
+p2cc2[i]<-out[1]
+p2dis2[i]<-out[2]
+}
+save(ps,p2cc2,p2dis2,file="WS_N10000.RData")
+
+```
+
+
+
+- Network Model for $\omega<0$
+
+- $N=10^3,10^4,r=3,\omega<0$
+
+```{r echo=FALSE,eval=FALSE}
+options(digits=12) 
+ps<-c(0,0.00000001*((10**0.1)**(0:79)),1.0)
+os<-(-1+ps)
+O<-length(os)
+
+o2ks<-list()
+o2dis<-numeric(O)
+o2cc<-numeric(O)
+N<-1000
+S<-1000
+r<-3
+
+for(j in 1:O){
+set.seed(1)  
+omega<-os[j]
+print(omega)
+ks<-c()
+dis<-c()
+cc<-c()
+
+for(s in 1:S){
+net<-Network(N,r,omega)
+k<-net$k_IN
+ks<-c(ks,k)
+ad<-matrix(0,ncol=N,nrow=N)
+for(i in 1:N){
+for(u in 1:r){  
+if(net$Link[i,u]>0) ad[i,net$Link[i,u]]<-1
+}}
+g <- graph_from_adjacency_matrix(ad,mode="directed")
+dis[s]<-average.path.length(g)
+cc[s]<-mean(transitivity(g,type="localaverage",isolates="zero"))
+}
+
+o2ks[[j]]<-ks
+o2dis[j]<-mean(dis)
+o2cc[j]<-mean(cc)
+}
+  
+save(os,o2ks,o2dis,o2cc,file="NETWORK_neg_omega_N1000.RData")
+################################################
+options(digits=12) 
+os<-(-1+ps)
+O<-length(os)
+
+o2ks2<-list()
+o2dis2<-numeric(O)
+o2cc2<-numeric(O)
+N<-10000
+S<-100
+r<-3
+
+for(j in 1:O){
+set.seed(1)  
+omega<-os[j]
+print(omega)
+ks<-c()
+dis<-c()
+cc<-c()
+
+for(s in 1:S){
+net<-Network(N,r,omega)
+k<-net$k_IN
+ks<-c(ks,k)
+ad<-matrix(0,ncol=N,nrow=N)
+for(i in 1:N){
+for(u in 1:r){  
+if(net$Link[i,u]>0) ad[i,net$Link[i,u]]<-1
+}}
+g <- graph_from_adjacency_matrix(ad,mode="directed")
+dis[s]<-average.path.length(g)
+cc[s]<-mean(transitivity(g,type="localaverage",isolates="zero"))
+}
+
+o2ks2[[j]]<-ks
+o2dis2[j]<-mean(dis)
+o2cc2[j]<-mean(cc)
+}
+  
+save(os,o2ks2,o2dis2,o2cc2,file="NETWORK_neg_omega_N10000.RData")
+################################################
+options(digits=12) 
+os<-(-1+ps)
+O<-length(os)
+
+o2ks3<-list()
+o2dis3<-numeric(O)
+o2cc3<-numeric(O)
+N<-100
+S<-1000
+r<-3
+
+for(j in 1:O){
+set.seed(1)  
+omega<-os[j]
+print(omega)
+ks<-c()
+dis<-c()
+cc<-c()
+
+for(s in 1:S){
+net<-Network(N,r,omega)
+k<-net$k_IN
+ks<-c(ks,k)
+ad<-matrix(0,ncol=N,nrow=N)
+for(i in 1:N){
+for(u in 1:r){  
+if(net$Link[i,u]>0) ad[i,net$Link[i,u]]<-1
+}}
+g <- graph_from_adjacency_matrix(ad,mode="directed")
+dis[s]<-average.path.length(g)
+cc[s]<-mean(transitivity(g,type="localaverage",isolates="zero"))
+}
+
+o2ks3[[j]]<-ks
+o2dis3[j]<-mean(dis)
+o2cc3[j]<-mean(cc)
+}
+  
+save(os,o2ks3,o2dis3,o2cc3,file="NETWORK_neg_omega_N100.RData")
+```
+
+
+- $N=1000,r=3,S=10^3,\omega\ge 0,-1$
+
+```{r echo=FALSE,eval=FALSE}
+o2ks<-list()
+os<-c(-1,0,0.1*((10**0.1)**(0:30)))
+O<-length(os)
+o2dis<-numeric(O)
+o2cc<-numeric(O)
+N<-1000
+S<-1000
+r<-3
+
+for(j in 1:O){
+omega<-os[j]
+print(omega)
+set.seed(1)
+ks<-c()
+dis<-c()
+cc<-c()
+for(s in 1:S){
+net<-Network(N,r,omega)
+k<-net$k_IN
+ks<-c(ks,k)
+ad<-matrix(0,ncol=N,nrow=N)
+for(i in 1:N){
+for(u in 1:r){  
+if(net$Link[i,u]>0) ad[i,net$Link[i,u]]<-1
+}}
+g <- graph_from_adjacency_matrix(ad,mode="directed")
+dis[s]<-average.path.length(g)
+cc[s]<-mean(transitivity(g,type="localaverage",isolates="zero"))
+}
+
+o2ks[[j]]<-ks
+o2dis[j]<-mean(dis)
+o2cc[j]<-mean(cc)
+}
+  
+save(os,o2ks,o2dis,o2cc,file="NETWORK_omega.RData")
+```
+
+
+
+
+```{r}
+load("WS_N1000.RData")
+load("NETWORK_neg_omega_N1000.RData")
+os1<-os
+o2dis1<-o2dis
+o2cc1<-o2cc
+load("NETWORK_omega.RData")
+os2<-os
+o2dis2<-o2dis
+o2cc2<-o2cc
+os<-c(os1,os2)
+o2dis<-c(o2dis1,o2dis2)
+o2cc<-c(o2cc1,o2cc2)
+c1<-o2dis[1]
+c2<-o2cc[1]
+t1<-expression(paste("L(",omega,")/L(0)"))
+t2<-expression(paste("C(",omega,")/C(0)"))
+xlabel=expression(paste("1+",omega,",p"))
+t3<-expression(paste("p=1,",omega,"=0"))
+
+par(mar = c(5.5, 6.0, 4.1, 2))
+plot(1+os,o2dis/c1,pch=20,cex=1,col=1,ylim=c(0,1.6),log="x",xlim=c(0.00000001,100),xlab=xlabel,ylab="",cex.lab=2,cex.main=2,cex.axis=2,type="l",lty=1,lwd=2)
+points(1+os,o2cc/c2,pch=20,cex=1,col=8,type="l",lwd=2)
+points(ps,p2dis/p2dis[1],type="l",cex=1,lty=3,col=1,lwd=3)
+points(ps,p2cc/p2cc[1],type="l",cex=1,lty=2,col=8,lwd=1)
+abline(v=1,col=8,lwd=2,lty=2)
+legend("bottomleft",legend=c(t1,t2,"WS:L(p)/L(0)","WS:C(p)/C(0)",t3),pch=-1,lty=c(1,1,3,3,2),lwd=c(2,2,3,3,2),cex=0.8,col=c(1,8,1,8,8))
+
+
+#pdf("omega_vs_CL.pdf")
+#par(mar = c(5.5, 6.0, 4.1, 2))
+#plot(1+os,o2dis/c1,pch=20,cex=1,col=1,ylim=c(0,1.6),log="x",xlim=c(0.00000001,100),xlab=xla#bel,ylab="",cex.lab=2,cex.main=2,cex.axis=2,type="l",lty=1,lwd=2)
+#points(1+os,o2cc/c2,pch=20,cex=1,col=8,type="l",lwd=2)
+#points(ps,p2dis/p2dis[1],type="l",cex=1,lty=3,col=1,lwd=3)
+#points(ps,p2cc/p2cc[1],type="l",cex=1,lty=2,col=8,lwd=1)
+#abline(v=1,col=8,lwd=2,lty=2)
+#legend("topleft",legend=c(t1,t2,"WS:L(p)/L(0)","WS:C(p)/C(0)",t3),pch=-1,lty=c(1,1,3,3,2),lwd=c(2,2,3,3,2),cex=1.2,col=c(1,8,1,8,8))
+#dev.off()
+```
+
+
+
+- Check of Finite Size Effect
+
+
+```{r}
+load("NETWORK_neg_omega_N100.RData")
+load("NETWORK_neg_omega_N1000.RData")
+load("NETWORK_neg_omega_N10000.RData")
+t1<-expression(paste("L(",omega,")/L(0),N=10"^4))
+t2<-expression(paste("C(",omega,")/C(0),N=10"^4))
+t3<-expression(paste("L(",omega,")/L(0),N=10"^5))
+t4<-expression(paste("C(",omega,")/C(0),N=10"^5))
+t5<-expression(paste("L(",omega,")/L(0),N=10"^3))
+t6<-expression(paste("C(",omega,")/C(0),N=10"^3))
+xlabel=expression(paste("1+",omega))
+par(mar = c(5.5, 6.0, 4.1, 2))
+plot(1+os,o2dis/o2dis[1],pch=20,cex=1,col=1,ylim=c(0,1.2),log="x",xlim=c(0.00000001,1),xlab=xlabel,ylab="",cex.lab=2,cex.main=2,cex.axis=2,type="l",lty=1,lwd=2)
+points(1+os,o2cc/o2cc[1],pch=20,cex=1,col=8,type="l",lwd=2)
+points(1+os,o2dis2/o2dis2[1],pch=20,cex=1,col=1,type="l",lty=2,lwd=2)
+points(1+os,o2cc2/o2cc2[1],pch=20,cex=1,col=8,type="l",lty=2,lwd=2)
+points(1+os,o2dis3/o2dis3[1],pch=20,cex=1,col=1,type="l",lty=4,lwd=2)
+points(1+os,o2cc3/o2cc3[1],pch=20,cex=1,col=8,type="l",lty=4,lwd=2)
+legend("topright",legend=c(t1,t2,t3,t4,t5,t6),pch=-1,lty=c(1,1,3,3,4,4),lwd=c(2,2,3,3,2,2),cex=0.8,col=c(1,8,1,8,1,8))
+
+#pdf("omega_vs_CL2.pdf")
+#par(mar = c(5.5, 6.0, 4.1, 2))
+#plot(1+os,o2dis/o2dis[1],pch=20,cex=1,col=1,ylim=c(0,1.2),log="x",xlim=c(0.00000001,1),xlab=xlabel,ylab="",cex.lab=2,cex.main=2,cex.axis=2,type="l",lty=1,lwd=2)
+#points(1+os,o2cc/o2cc[1],pch=20,cex=1,col=8,type="l",lwd=2)
+#points(1+os,o2dis2/o2dis2[1],pch=20,cex=1,col=1,type="l",lty=2,lwd=2)
+#points(1+os,o2cc2/o2cc2[1],pch=20,cex=1,col=8,type="l",lty=2,lwd=2)
+#points(1+os,o2dis3/o2dis3[1],pch=20,cex=1,col=1,type="l",lty=4,lwd=2)
+#points(1+os,o2cc3/o2cc3[1],pch=20,cex=1,col=8,type="l",lty=4,lwd=2)
+#legend("topright",legend=c(t1,t2,t3,t4,t5,t6),pch=-1,lty=c(1,1,3,3,4,4),lwd=c(2,2,3,3,2,2),cex=1.2,col=c(1,8,1,8,1,8))
+#dev.off()
+```
+
+- WS Model
+
+```{r}
+load("WS_N1000.RData")
+load("WS_N10000.RData")
+t1<-expression(paste("L(p)/L(0),N=10"^4))
+t2<-expression(paste("C(p)/C(0),N=10"^4))
+t3<-expression(paste("L(p)/L(0),N=10"^5))
+t4<-expression(paste("C(p)/C(0),N=10"^5))
+
+
+c1<-p2dis[1]
+c2<-p2cc[1]
+c12<-p2dis2[1]
+c22<-p2cc2[1]
+par(mar = c(5.5, 6.0, 4.1, 2))
+plot(ps,p2dis/p2dis[1],pch=20,cex=1,col=1,ylim=c(0,1.6),log="x",xlim=c(0.00000001,1),xlab="p",ylab="",cex.lab=2,cex.main=2,cex.axis=2,type="l",lty=1,lwd=2)
+points(ps,p2cc/p2cc[1],pch=20,cex=1,col=8,type="l",lwd=2)
+points(ps,p2dis2/p2dis2[1],pch=20,cex=1,col=1,type="l",lty=2,lwd=3)
+points(ps,p2cc2/p2cc2[1],pch=20,cex=1,col=8,type="l",lty=2,lwd=3)
+legend("topright",legend=c(t1,t2,t1,t2),pch=-1,lty=c(1,1,3,3,2),lwd=c(2,2,3,3,2),cex=0.8,col=c(1,8,1,8,8))
+```
+
+
+
+
+
+
+
+
+
+
+
+
